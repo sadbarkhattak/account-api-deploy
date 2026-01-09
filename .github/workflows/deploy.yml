@@ -61,31 +61,6 @@ jobs:
           exit 1
         fi
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-
-    - name: Build and push Docker image
-      id: build-image
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        ECR_REPOSITORY: ${{ steps.config.outputs.application_name }}-${{ steps.config.outputs.environment }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        # Create ECR repository if it doesn't exist
-        aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region ${{ steps.config.outputs.region }} || \
-        aws ecr create-repository --repository-name $ECR_REPOSITORY --region ${{ steps.config.outputs.region }} --image-scanning-configuration scanOnPush=true
-        
-        # Build and push Docker image
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        
-        # Also tag as latest
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-        
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
@@ -107,13 +82,56 @@ jobs:
           -var="application_name=${{ steps.config.outputs.application_name }}" \
           -var="environment=${{ steps.config.outputs.environment }}" \
           -var="aws_region=${{ steps.config.outputs.region }}" \
-          -var="docker_image=${{ steps.build-image.outputs.image }}" \
+          -var="docker_image=placeholder" \
           -out=tfplan
 
-    - name: Terraform Apply
-      id: terraform-apply
+    - name: Terraform Apply Infrastructure
+      id: terraform-apply-infra
       working-directory: infra
       run: terraform apply -auto-approve tfplan
+
+    - name: Get ECR Repository URL
+      id: get-ecr
+      working-directory: infra
+      run: |
+        ECR_URL=$(terraform output -raw container_registry | jq -r '.repository_url')
+        echo "ecr_repository_url=$ECR_URL" >> $GITHUB_OUTPUT
+        echo "✅ ECR Repository: $ECR_URL"
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Docker image
+      id: build-image
+      env:
+        ECR_REPOSITORY_URL: ${{ steps.get-ecr.outputs.ecr_repository_url }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build and push Docker image
+        docker build -t $ECR_REPOSITORY_URL:$IMAGE_TAG .
+        docker push $ECR_REPOSITORY_URL:$IMAGE_TAG
+        
+        # Also tag as latest
+        docker tag $ECR_REPOSITORY_URL:$IMAGE_TAG $ECR_REPOSITORY_URL:latest
+        docker push $ECR_REPOSITORY_URL:latest
+        
+        echo "image=$ECR_REPOSITORY_URL:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Update Terraform with Docker Image
+      working-directory: infra
+      run: |
+        terraform plan \
+          -var="application_name=${{ steps.config.outputs.application_name }}" \
+          -var="environment=${{ steps.config.outputs.environment }}" \
+          -var="aws_region=${{ steps.config.outputs.region }}" \
+          -var="docker_image=${{ steps.build-image.outputs.image }}" \
+          -out=tfplan-with-image
+
+    - name: Terraform Apply with Docker Image
+      id: terraform-apply-final
+      working-directory: infra
+      run: terraform apply -auto-approve tfplan-with-image
 
     - name: Get Application URL
       id: get-url
