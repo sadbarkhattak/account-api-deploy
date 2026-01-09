@@ -1,22 +1,5 @@
 {
   "application_name": "account-api",
-  "version": "latest",
   "environment": "dev",
-  "region": "us-east-1",
-  "timestamp": "2026-01-09T06:15:00.000Z",
-  "status": "approved",
-  "application_config": {
-    "product_line": "Account",
-    "vertical": "API",
-    "repository_url": "https://github.com/sadbarkhattak/account-api-deploy",
-    "git_tag": "main",
-    "branch": "main",
-    "dockerfile_path": "./Dockerfile",
-    "port": 3000
-  },
-  "statusUpdated": "2026-01-09T06:15:00.000Z",
-  "approvedBy": "sadbar",
-  "approvalNote": "Deployment triggered with GitHub secrets configured",
-  "approvedAt": "2026-01-09T06:15:00.000Z",
-  "deployment_triggered": true
+  "region": "us-east-1"
 }
