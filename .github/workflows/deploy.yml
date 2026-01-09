@@ -24,10 +24,28 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Debug secrets
+      run: |
+        echo "AWS_REGION: ${{ env.AWS_REGION }}"
+        echo "TF_STATE_BUCKET configured: ${{ secrets.TF_STATE_BUCKET != '' }}"
+        echo "AWS_ROLE_ARN configured: ${{ secrets.AWS_ROLE_ARN != '' }}"
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+        role-session-name: GitHubActions-${{ github.run_id }}
+        role-duration-seconds: 3600
+
+    - name: Verify AWS credentials
+      run: |
+        aws sts get-caller-identity
+        echo "✅ AWS credentials working"
+
     - name: Parse deployment configuration
       id: config
       run: |
-        # Get the latest deployment from the config file
         if [ -f "configs/deployments.json" ]; then
           APP_NAME=$(jq -r '.application_name' configs/deployments.json)
           ENVIRONMENT=$(jq -r '.environment' configs/deployments.json)
@@ -42,12 +60,6 @@ jobs:
           echo "No deployment configuration found"
           exit 1
         fi
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        aws-region: ${{ steps.config.outputs.region }}
 
     - name: Login to Amazon ECR
       id: login-ecr
