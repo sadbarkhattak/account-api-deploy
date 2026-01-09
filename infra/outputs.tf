@@ -40,10 +40,10 @@ output "ecs_service_arn" {
 output "container_registry" {
   description = "ECR repository information"
   value = {
-    repository_url  = aws_ecr_repository.main.repository_url
-    registry_id     = aws_ecr_repository.main.registry_id
-    repository_arn  = aws_ecr_repository.main.arn
-    repository_name = aws_ecr_repository.main.name
+    repository_url  = data.aws_ecr_repository.main.repository_url
+    registry_id     = data.aws_ecr_repository.main.registry_id
+    repository_arn  = data.aws_ecr_repository.main.arn
+    repository_name = data.aws_ecr_repository.main.name
   }
 }
 
