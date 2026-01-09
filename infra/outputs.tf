@@ -33,7 +33,18 @@ output "ecs_service_name" {
 
 output "ecs_service_arn" {
   description = "ARN of the ECS service"
-  value       = aws_ecs_service.main.arn
+  value       = aws_ecs_service.main.id
+}
+
+# Container Registry Information
+output "container_registry" {
+  description = "ECR repository information"
+  value = {
+    repository_url  = aws_ecr_repository.main.repository_url
+    registry_id     = aws_ecr_repository.main.registry_id
+    repository_arn  = aws_ecr_repository.main.arn
+    repository_name = aws_ecr_repository.main.name
+  }
 }
 
 # CloudWatch Information
