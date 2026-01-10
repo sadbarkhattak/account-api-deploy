@@ -41,6 +41,13 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "approved_by=$APPROVED_BY" >> $GITHUB_OUTPUT
           
+          # Generate resource names
+          CLUSTER_NAME="${APP_NAME}-${ENVIRONMENT}-cluster"
+          SERVICE_NAME="${APP_NAME}-${ENVIRONMENT}-service"
+          
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+          
           echo "🚀 Deployment triggered!"
           echo "📦 Application: $APP_NAME"
           echo "🌍 Environment: $ENVIRONMENT"
@@ -65,6 +72,35 @@ jobs:
         aws sts get-caller-identity
         echo "✅ AWS credentials configured successfully"
 
+    - name: Check existing infrastructure
+      id: infra-check
+      run: |
+        echo "🔍 Checking for existing infrastructure..."
+        
+        # Check if ECS cluster exists
+        CLUSTER_EXISTS=$(aws ecs describe-clusters --clusters ${{ steps.config.outputs.cluster_name }} --region ${{ steps.config.outputs.region }} --query 'clusters[0].status' --output text 2>/dev/null || echo "MISSING")
+        
+        # Check if ECS service exists
+        SERVICE_EXISTS="MISSING"
+        if [ "$CLUSTER_EXISTS" = "ACTIVE" ]; then
+          SERVICE_EXISTS=$(aws ecs describe-services --cluster ${{ steps.config.outputs.cluster_name }} --services ${{ steps.config.outputs.service_name }} --region ${{ steps.config.outputs.region }} --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")
+        fi
+        
+        echo "cluster_exists=$CLUSTER_EXISTS" >> $GITHUB_OUTPUT
+        echo "service_exists=$SERVICE_EXISTS" >> $GITHUB_OUTPUT
+        
+        if [ "$CLUSTER_EXISTS" = "ACTIVE" ] && [ "$SERVICE_EXISTS" = "ACTIVE" ]; then
+          echo "infrastructure_ready=true" >> $GITHUB_OUTPUT
+          echo "✅ Infrastructure already exists - will perform app-only deployment"
+          echo "🔗 ECS Cluster: ${{ steps.config.outputs.cluster_name }} (ACTIVE)"
+          echo "⚙️ ECS Service: ${{ steps.config.outputs.service_name }} (ACTIVE)"
+        else
+          echo "infrastructure_ready=false" >> $GITHUB_OUTPUT
+          echo "🏗️ Infrastructure missing - will provision with Terraform"
+          echo "🔗 ECS Cluster: ${{ steps.config.outputs.cluster_name }} ($CLUSTER_EXISTS)"
+          echo "⚙️ ECS Service: ${{ steps.config.outputs.service_name }} ($SERVICE_EXISTS)"
+        fi
+
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
@@ -76,6 +112,8 @@ jobs:
         ECR_REPOSITORY: ${{ steps.config.outputs.application_name }}
         IMAGE_TAG: ${{ steps.config.outputs.version }}
       run: |
+        echo "🐳 Building and pushing Docker image..."
+        
         # Create ECR repository if it doesn't exist
         aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region ${{ steps.config.outputs.region }} || \
         aws ecr create-repository --repository-name $ECR_REPOSITORY --region ${{ steps.config.outputs.region }} --image-scanning-configuration scanOnPush=true
@@ -90,25 +128,32 @@ jobs:
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
         
-        # Output the image URI for Terraform
+        # Output the image URI
         echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "✅ Docker image built and pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
+    # Infrastructure provisioning (only if needed)
     - name: Setup Terraform
+      if: steps.infra-check.outputs.infrastructure_ready == 'false'
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
     - name: Terraform Init
+      if: steps.infra-check.outputs.infrastructure_ready == 'false'
       working-directory: ./infra
       run: |
+        echo "🏗️ Initializing Terraform for infrastructure provisioning..."
         terraform init \
           -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
           -backend-config="key=${{ steps.config.outputs.application_name }}/${{ steps.config.outputs.environment }}/${{ steps.config.outputs.region }}/terraform.tfstate" \
           -backend-config="region=${{ steps.config.outputs.region }}"
 
     - name: Terraform Plan
+      if: steps.infra-check.outputs.infrastructure_ready == 'false'
       working-directory: ./infra
       run: |
+        echo "📋 Planning Terraform infrastructure changes..."
         terraform plan \
           -var="application_name=${{ steps.config.outputs.application_name }}" \
           -var="environment=${{ steps.config.outputs.environment }}" \
@@ -117,40 +162,105 @@ jobs:
           -out=tfplan
 
     - name: Terraform Apply
+      if: steps.infra-check.outputs.infrastructure_ready == 'false'
       working-directory: ./infra
       run: |
+        echo "🚀 Applying Terraform infrastructure changes..."
         terraform apply -auto-approve tfplan
 
+    # Application deployment (always runs)
+    - name: Update ECS service with new image
+      id: ecs-deploy
+      run: |
+        echo "🚀 Deploying application to ECS..."
+        
+        # Get current task definition
+        TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ steps.config.outputs.cluster_name }} --services ${{ steps.config.outputs.service_name }} --region ${{ steps.config.outputs.region }} --query 'services[0].taskDefinition' --output text)
+        
+        if [ "$TASK_DEF_ARN" = "None" ] || [ -z "$TASK_DEF_ARN" ]; then
+          echo "❌ Could not find task definition for service"
+          exit 1
+        fi
+        
+        echo "📋 Current task definition: $TASK_DEF_ARN"
+        
+        # Get task definition details
+        TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition $TASK_DEF_ARN --region ${{ steps.config.outputs.region }})
+        
+        # Create new task definition with updated image
+        NEW_TASK_DEF=$(echo $TASK_DEF_JSON | jq --arg IMAGE "${{ steps.build-image.outputs.image_uri }}" '
+          .taskDefinition | 
+          .containerDefinitions[0].image = $IMAGE |
+          del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)
+        ')
+        
+        # Register new task definition
+        NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEF | aws ecs register-task-definition --region ${{ steps.config.outputs.region }} --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
+        
+        echo "📋 New task definition: $NEW_TASK_DEF_ARN"
+        
+        # Update service with new task definition
+        aws ecs update-service \
+          --cluster ${{ steps.config.outputs.cluster_name }} \
+          --service ${{ steps.config.outputs.service_name }} \
+          --task-definition $NEW_TASK_DEF_ARN \
+          --region ${{ steps.config.outputs.region }}
+        
+        echo "✅ ECS service updated with new task definition"
+        echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
     - name: Get deployment outputs
-      working-directory: ./infra
       id: outputs
       run: |
-        LOAD_BALANCER_URL=$(terraform output -raw load_balancer_url 2>/dev/null || echo "")
-        ECS_CLUSTER=$(terraform output -raw ecs_cluster_name 2>/dev/null || echo "")
-        ECS_SERVICE=$(terraform output -raw ecs_service_name 2>/dev/null || echo "")
+        echo "📊 Gathering deployment information..."
+        
+        # Get load balancer URL from service
+        LOAD_BALANCER_ARN=$(aws ecs describe-services --cluster ${{ steps.config.outputs.cluster_name }} --services ${{ steps.config.outputs.service_name }} --region ${{ steps.config.outputs.region }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text 2>/dev/null || echo "")
+        
+        LOAD_BALANCER_URL=""
+        if [ -n "$LOAD_BALANCER_ARN" ] && [ "$LOAD_BALANCER_ARN" != "None" ]; then
+          # Get ALB ARN from target group
+          ALB_ARN=$(aws elbv2 describe-target-groups --target-group-arns $LOAD_BALANCER_ARN --region ${{ steps.config.outputs.region }} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text 2>/dev/null || echo "")
+          if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+            LOAD_BALANCER_URL=$(aws elbv2 describe-load-balancers --load-balancer-arns $ALB_ARN --region ${{ steps.config.outputs.region }} --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "")
+            if [ -n "$LOAD_BALANCER_URL" ] && [ "$LOAD_BALANCER_URL" != "None" ]; then
+              LOAD_BALANCER_URL="http://$LOAD_BALANCER_URL"
+            fi
+          fi
+        fi
         
         echo "load_balancer_url=$LOAD_BALANCER_URL" >> $GITHUB_OUTPUT
-        echo "ecs_cluster=$ECS_CLUSTER" >> $GITHUB_OUTPUT
-        echo "ecs_service=$ECS_SERVICE" >> $GITHUB_OUTPUT
+        echo "ecs_cluster=${{ steps.config.outputs.cluster_name }}" >> $GITHUB_OUTPUT
+        echo "ecs_service=${{ steps.config.outputs.service_name }}" >> $GITHUB_OUTPUT
 
     - name: Wait for deployment to complete
       run: |
         echo "⏳ Waiting for ECS service to stabilize..."
         aws ecs wait services-stable \
-          --cluster ${{ steps.outputs.ecs_cluster }} \
-          --service ${{ steps.outputs.ecs_service }} \
-          --region ${{ steps.config.outputs.region }}
+          --cluster ${{ steps.config.outputs.cluster_name }} \
+          --service ${{ steps.config.outputs.service_name }} \
+          --region ${{ steps.config.outputs.region }} \
+          --max-attempts 20 \
+          --delay 30
+        
+        echo "✅ ECS service is stable"
 
     - name: Deployment summary
       run: |
         echo "🎉 Deployment completed successfully!"
+        echo ""
         echo "📦 Application: ${{ steps.config.outputs.application_name }}"
         echo "🌍 Environment: ${{ steps.config.outputs.environment }}"
         echo "📍 Region: ${{ steps.config.outputs.region }}"
         echo "🏷️ Version: ${{ steps.config.outputs.version }}"
         echo "👤 Approved by: ${{ steps.config.outputs.approved_by }}"
-        echo "🌐 Load Balancer URL: ${{ steps.outputs.load_balancer_url }}"
+        echo ""
+        echo "🏗️ Infrastructure Status: ${{ steps.infra-check.outputs.infrastructure_ready == 'true' && 'Existing (App-only deployment)' || 'Provisioned with Terraform' }}"
+        echo "🐳 Docker Image: ${{ steps.build-image.outputs.image_uri }}"
+        echo "📋 Task Definition: ${{ steps.ecs-deploy.outputs.task_definition_arn }}"
         echo "🔗 ECS Cluster: ${{ steps.outputs.ecs_cluster }}"
         echo "⚙️ ECS Service: ${{ steps.outputs.ecs_service }}"
-        echo "🐳 Docker Image: ${{ steps.build-image.outputs.image_uri }}"
+        echo "🌐 Load Balancer URL: ${{ steps.outputs.load_balancer_url }}"
+        echo ""
         echo "✅ Deployment Status: SUCCESS"
+        echo "🚀 Application is now live!"
