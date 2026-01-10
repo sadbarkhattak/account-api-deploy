@@ -1,60 +1,11 @@
 {
   "application_name": "account-api",
-  "version": "latest",
   "environment": "dev",
   "region": "us-east-1",
-  "timestamp": "2026-01-10T09:58:47.876Z",
-  "status": "deploying",
-  "requested_by": "testing",
-  "application_config": {
-    "product_line": "Account",
-    "vertical": "API",
-    "repository_url": "https://github.com/sadbarkhattak/account-api",
-    "dockerfile_path": "./Dockerfile",
-    "port": 3000,
-    "description": "Account management API for handling relationships between accounts and organizations",
-    "git_tag": "main",
-    "branch": "main"
-  },
-  "environment_config": {
-    "resourceLimits": {
-      "cpu": "256",
-      "memory": "512",
-      "minCapacity": 1,
-      "maxCapacity": 2,
-      "desiredCapacity": 1
-    },
-    "scaling": {
-      "targetCpuUtilization": 80,
-      "scaleUpCooldown": 300,
-      "scaleDownCooldown": 300
-    },
-    "logging": {
-      "logLevel": "debug",
-      "retentionDays": 7
-    },
-    "networking": {
-      "enablePublicAccess": true,
-      "enableLoadBalancer": true
-    },
-    "monitoring": {
-      "enableDetailedMonitoring": false,
-      "enableXRayTracing": false
-    },
-    "security": {
-      "enableWAF": false,
-      "enableSSL": false
-    },
-    "tags": {
-      "Environment": "development",
-      "CostCenter": "engineering",
-      "AutoShutdown": "true"
-    }
-  },
-  "approval_required": false,
-  "auto_deploy": true,
-  "approvedBy": "testing",
-  "approvedAt": "2026-01-10T09:59:02.333Z",
-  "triggered": true,
-  "triggeredAt": "2026-01-10T09:59:02.364Z"
+  "version": "latest",
+  "timestamp": "2026-01-10T10:31:25.410Z",
+  "approved_by": "testing",
+  "approved_at": "2026-01-10T10:31:25.410Z",
+  "trigger_type": "approval",
+  "status": "approved"
 }
