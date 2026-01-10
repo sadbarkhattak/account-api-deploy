@@ -1,0 +1,4 @@
+Deployment triggered at: 2026-01-10T06:54:00Z
+Application: account-api
+Environment: dev
+Region: us-east-1
