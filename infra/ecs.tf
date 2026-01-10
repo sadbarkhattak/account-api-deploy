@@ -72,6 +72,10 @@ resource "aws_security_group" "alb" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-alb-sg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_security_group" "ecs" {
@@ -95,9 +99,13 @@ resource "aws_security_group" "ecs" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-ecs-sg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-# Load Balancer
+# Load Balancer - Handle existing resource
 resource "aws_lb" "main" {
   name               = "${local.name_prefix}-alb"
   internal           = false
@@ -108,6 +116,14 @@ resource "aws_lb" "main" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-alb"
   })
+
+  lifecycle {
+    ignore_changes = [
+      # Ignore changes to tags that might be added externally
+      tags["CreatedBy"],
+      tags["ManagedBy"]
+    ]
+  }
 }
 
 resource "aws_lb_target_group" "main" {
@@ -132,6 +148,15 @@ resource "aws_lb_target_group" "main" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-tg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes = [
+      # Ignore changes to tags that might be added externally
+      tags["CreatedBy"],
+      tags["ManagedBy"]
+    ]
+  }
 }
 
 resource "aws_lb_listener" "main" {
@@ -159,7 +184,7 @@ resource "aws_ecs_cluster" "main" {
   })
 }
 
-# CloudWatch Log Group
+# CloudWatch Log Group - Handle existing resource
 resource "aws_cloudwatch_log_group" "main" {
   name              = "/ecs/${local.name_prefix}"
   retention_in_days = 7
@@ -167,9 +192,17 @@ resource "aws_cloudwatch_log_group" "main" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-logs"
   })
+
+  lifecycle {
+    ignore_changes = [
+      # Ignore changes to tags that might be added externally
+      tags["CreatedBy"],
+      tags["ManagedBy"]
+    ]
+  }
 }
 
-# IAM Roles
+# IAM Roles - Handle existing resource
 resource "aws_iam_role" "ecs_execution" {
   name = "${local.name_prefix}-ecs-execution-role"
 
@@ -189,6 +222,14 @@ resource "aws_iam_role" "ecs_execution" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-ecs-execution-role"
   })
+
+  lifecycle {
+    ignore_changes = [
+      # Ignore changes to tags that might be added externally
+      tags["CreatedBy"],
+      tags["ManagedBy"]
+    ]
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_execution" {
@@ -269,4 +310,14 @@ resource "aws_ecs_service" "main" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-service"
   })
+
+  lifecycle {
+    ignore_changes = [
+      # Allow ECS to manage the desired count during auto-scaling
+      desired_count,
+      # Ignore changes to tags that might be added externally
+      tags["CreatedBy"],
+      tags["ManagedBy"]
+    ]
+  }
 }
