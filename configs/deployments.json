@@ -4,11 +4,11 @@
     "environment": "dev",
     "region": "us-east-1",
     "version": "latest",
-    "timestamp": "2026-01-10T13:18:42.000Z",
-    "approved_by": "Auto-Deploy Test",
-    "approved_at": "2026-01-10T13:18:42.000Z",
+    "timestamp": "2026-01-10T13:23:03.413Z",
+    "approved_by": "approval 4444",
+    "approved_at": "2026-01-10T13:23:03.413Z",
     "trigger_type": "approval",
     "status": "approved",
-    "deployment_id": "test-auto-deploy-" + Date.now()
+    "deployment_id": "2026-01-10T13:22:34.657Z"
   }
 ]
