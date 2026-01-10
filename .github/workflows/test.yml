@@ -1,0 +1,16 @@
+name: Test Workflow
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test step
+      run: |
+        echo "✅ GitHub Actions is working!"
+        echo "Repository: account-api-deploy"
+        echo "Commit: ${{ github.sha }}"
