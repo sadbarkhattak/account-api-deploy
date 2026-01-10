@@ -4,11 +4,11 @@
     "environment": "dev",
     "region": "us-east-1",
     "version": "latest",
-    "timestamp": "2026-01-10T12:47:57.000Z",
-    "approved_by": "OIDC-Test",
-    "approved_at": "2026-01-10T12:47:57.000Z",
+    "timestamp": "2026-01-10T12:39:04.187Z",
+    "approved_by": "testing..",
+    "approved_at": "2026-01-10T12:39:04.187Z",
     "trigger_type": "approval",
     "status": "approved",
-    "deployment_id": "oidc-test-deployment"
+    "deployment_id": "2026-01-10T12:38:41.789Z"
   }
 ]
