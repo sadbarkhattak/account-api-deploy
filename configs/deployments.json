@@ -4,11 +4,11 @@
     "environment": "dev",
     "region": "us-east-1",
     "version": "latest",
-    "timestamp": "2026-01-10T13:23:03.413Z",
-    "approved_by": "approval 4444",
-    "approved_at": "2026-01-10T13:23:03.413Z",
-    "trigger_type": "approval",
+    "timestamp": "2026-01-10T13:30:00.000Z",
+    "approved_by": "Workflow Test",
+    "approved_at": "2026-01-10T13:30:00.000Z",
+    "trigger_type": "test",
     "status": "approved",
-    "deployment_id": "2026-01-10T13:22:34.657Z"
+    "deployment_id": "test-trigger-2026-01-10T13:30:00.000Z"
   }
 ]
