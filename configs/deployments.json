@@ -3,9 +3,10 @@
   "environment": "dev",
   "region": "us-east-1",
   "version": "latest",
-  "timestamp": "2026-01-10T10:31:25.410Z",
+  "timestamp": "2026-01-10T10:37:50.000Z",
   "approved_by": "testing",
-  "approved_at": "2026-01-10T10:31:25.410Z",
+  "approved_at": "2026-01-10T10:37:50.000Z",
   "trigger_type": "approval",
-  "status": "approved"
+  "status": "approved",
+  "test_trigger": true
 }
