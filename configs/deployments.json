@@ -4,11 +4,11 @@
     "environment": "dev",
     "region": "us-east-1",
     "version": "latest",
-    "timestamp": "2026-01-10T12:39:04.187Z",
-    "approved_by": "testing..",
-    "approved_at": "2026-01-10T12:39:04.187Z",
+    "timestamp": "2026-01-10T13:07:13.807Z",
+    "approved_by": "Approved 111",
+    "approved_at": "2026-01-10T13:07:13.807Z",
     "trigger_type": "approval",
     "status": "approved",
-    "deployment_id": "2026-01-10T12:38:41.789Z"
+    "deployment_id": "2026-01-10T13:06:51.974Z"
   }
 ]
