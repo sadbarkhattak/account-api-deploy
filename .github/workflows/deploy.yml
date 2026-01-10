@@ -8,6 +8,10 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.5.0
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,29 +24,117 @@ jobs:
       id: config
       run: |
         if [ -f "configs/deployments.json" ]; then
-          APP_NAME=$(jq -r '.application_name' configs/deployments.json)
-          ENVIRONMENT=$(jq -r '.environment' configs/deployments.json)
-          REGION=$(jq -r '.region' configs/deployments.json)
+          # Parse the JSON array and get the first deployment
+          APP_NAME=$(jq -r '.[0].application_name' configs/deployments.json)
+          ENVIRONMENT=$(jq -r '.[0].environment' configs/deployments.json)
+          REGION=$(jq -r '.[0].region' configs/deployments.json)
+          VERSION=$(jq -r '.[0].version' configs/deployments.json)
+          APPROVED_BY=$(jq -r '.[0].approved_by' configs/deployments.json)
           
           echo "application_name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "approved_by=$APPROVED_BY" >> $GITHUB_OUTPUT
           
           echo "🚀 Deployment triggered!"
           echo "📦 Application: $APP_NAME"
           echo "🌍 Environment: $ENVIRONMENT"
           echo "📍 Region: $REGION"
+          echo "🏷️ Version: $VERSION"
+          echo "👤 Approved by: $APPROVED_BY"
           echo "⏰ Timestamp: $(date)"
         else
           echo "❌ No deployment configuration found"
           exit 1
         fi
 
-    - name: Verify deployment config
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ steps.config.outputs.region }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Terraform Init
+      working-directory: ./infra
       run: |
-        echo "✅ Deployment configuration verified"
-        echo "🔧 Next steps would be:"
-        echo "   1. Configure AWS credentials"
-        echo "   2. Build Docker image"
-        echo "   3. Deploy to ECS"
-        echo "📊 For now, this confirms the workflow triggers correctly"
+        terraform init \
+          -backend-config="bucket=terraform-state-${{ steps.config.outputs.application_name }}" \
+          -backend-config="key=${{ steps.config.outputs.application_name }}/${{ steps.config.outputs.environment }}/${{ steps.config.outputs.region }}/terraform.tfstate" \
+          -backend-config="region=${{ steps.config.outputs.region }}"
+
+    - name: Terraform Plan
+      working-directory: ./infra
+      run: |
+        terraform plan \
+          -var="application_name=${{ steps.config.outputs.application_name }}" \
+          -var="environment=${{ steps.config.outputs.environment }}" \
+          -var="region=${{ steps.config.outputs.region }}" \
+          -out=tfplan
+
+    - name: Terraform Apply
+      working-directory: ./infra
+      run: |
+        terraform apply -auto-approve tfplan
+
+    - name: Get deployment outputs
+      working-directory: ./infra
+      id: outputs
+      run: |
+        LOAD_BALANCER_URL=$(terraform output -raw load_balancer_url 2>/dev/null || echo "")
+        ECS_CLUSTER=$(terraform output -raw ecs_cluster_name 2>/dev/null || echo "")
+        ECS_SERVICE=$(terraform output -raw ecs_service_name 2>/dev/null || echo "")
+        
+        echo "load_balancer_url=$LOAD_BALANCER_URL" >> $GITHUB_OUTPUT
+        echo "ecs_cluster=$ECS_CLUSTER" >> $GITHUB_OUTPUT
+        echo "ecs_service=$ECS_SERVICE" >> $GITHUB_OUTPUT
+
+    - name: Build and push Docker image
+      run: |
+        # Login to ECR
+        aws ecr get-login-password --region ${{ steps.config.outputs.region }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ steps.config.outputs.region }}.amazonaws.com
+        
+        # Build image
+        docker build -t ${{ steps.config.outputs.application_name }}:${{ steps.config.outputs.version }} .
+        
+        # Tag for ECR
+        docker tag ${{ steps.config.outputs.application_name }}:${{ steps.config.outputs.version }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ steps.config.outputs.region }}.amazonaws.com/${{ steps.config.outputs.application_name }}:${{ steps.config.outputs.version }}
+        
+        # Push to ECR
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ steps.config.outputs.region }}.amazonaws.com/${{ steps.config.outputs.application_name }}:${{ steps.config.outputs.version }}
+
+    - name: Update ECS service
+      run: |
+        # Force new deployment of ECS service
+        aws ecs update-service \
+          --cluster ${{ steps.outputs.ecs_cluster }} \
+          --service ${{ steps.outputs.ecs_service }} \
+          --force-new-deployment \
+          --region ${{ steps.config.outputs.region }}
+
+    - name: Wait for deployment to complete
+      run: |
+        echo "⏳ Waiting for ECS service to stabilize..."
+        aws ecs wait services-stable \
+          --cluster ${{ steps.outputs.ecs_cluster }} \
+          --services ${{ steps.outputs.ecs_service }} \
+          --region ${{ steps.config.outputs.region }}
+
+    - name: Deployment summary
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo "📦 Application: ${{ steps.config.outputs.application_name }}"
+        echo "🌍 Environment: ${{ steps.config.outputs.environment }}"
+        echo "📍 Region: ${{ steps.config.outputs.region }}"
+        echo "🏷️ Version: ${{ steps.config.outputs.version }}"
+        echo "👤 Approved by: ${{ steps.config.outputs.approved_by }}"
+        echo "🌐 Load Balancer URL: ${{ steps.outputs.load_balancer_url }}"
+        echo "🔗 ECS Cluster: ${{ steps.outputs.ecs_cluster }}"
+        echo "⚙️ ECS Service: ${{ steps.outputs.ecs_service }}"
+        echo "✅ Deployment Status: SUCCESS"
