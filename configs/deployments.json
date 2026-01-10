@@ -4,11 +4,11 @@
     "environment": "dev",
     "region": "us-east-1",
     "version": "latest",
-    "timestamp": "2026-01-10T13:56:00.000Z",
-    "approved_by": "Kiro Test User",
-    "approved_at": "2026-01-10T13:56:00.000Z",
-    "trigger_type": "test",
+    "timestamp": "2026-01-10T13:58:30.125Z",
+    "approved_by": "asdfasdfsd",
+    "approved_at": "2026-01-10T13:58:30.125Z",
+    "trigger_type": "approval",
     "status": "approved",
-    "deployment_id": "kiro-test-2026-01-10T13:56:00.000Z"
+    "deployment_id": "2026-01-10T13:57:02.195Z"
   }
 ]
