@@ -2,8 +2,7 @@ name: Deploy Account API
 
 on:
   push:
-    paths:
-      - 'configs/deployments.json'
+
     branches:
       - main
   workflow_dispatch:
