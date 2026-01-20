@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,23 +12,8 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from public directory
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Health check endpoint (must be before catch-all)
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'account-api',
-    environment: ENVIRONMENT,
-    version: VERSION,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
-});
-
-// API Routes (must be before catch-all)
-app.get('/api', (req, res) => {
+// Routes
+app.get('/', (req, res) => {
   res.json({
     service: 'Account API',
     product_line: 'Account',
@@ -42,7 +26,18 @@ app.get('/api', (req, res) => {
   });
 });
 
-app.get('/api/accounts', (req, res) => {
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'account-api',
+    environment: ENVIRONMENT,
+    version: VERSION,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+app.get('/accounts', (req, res) => {
   res.json({
     accounts: [
       { id: 1, name: 'Business Account', type: 'business', status: 'active' },
@@ -56,7 +51,6 @@ app.get('/api/accounts', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Account API running on port ${PORT} in ${ENVIRONMENT} environment`);
-  console.log(`Serving static files from: ${path.join(__dirname, 'public')}`);
 });
 
 module.exports = app;
