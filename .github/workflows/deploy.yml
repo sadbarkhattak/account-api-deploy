@@ -165,45 +165,97 @@ jobs:
     - name: Get load balancer URL
       id: lb-url
       run: |
-        # Try to get load balancer URL from ECS service
-        LB_ARN=$(aws ecs describe-services \
+        echo "🔍 Retrieving Load Balancer URL..."
+        
+        # Method 1: Get from ECS service load balancers
+        TARGET_GROUP_ARN=$(aws ecs describe-services \
           --cluster ${{ steps.infra-check.outputs.cluster_name }} \
           --services ${{ steps.infra-check.outputs.service_name }} \
           --region ${{ steps.config.outputs.region }} \
           --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
         
-        if [ "$LB_ARN" != "None" ] && [ "$LB_ARN" != "" ]; then
+        if [ "$TARGET_GROUP_ARN" != "None" ] && [ "$TARGET_GROUP_ARN" != "" ] && [ "$TARGET_GROUP_ARN" != "null" ]; then
+          echo "✅ Found target group: $TARGET_GROUP_ARN"
+          
           # Get load balancer ARN from target group
           LB_ARN=$(aws elbv2 describe-target-groups \
-            --target-group-arns $LB_ARN \
+            --target-group-arns $TARGET_GROUP_ARN \
             --region ${{ steps.config.outputs.region }} \
             --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
           
-          # Get load balancer DNS name
-          LB_URL=$(aws elbv2 describe-load-balancers \
-            --load-balancer-arns $LB_ARN \
-            --region ${{ steps.config.outputs.region }} \
-            --query 'LoadBalancers[0].DNSName' --output text)
-          
-          echo "load_balancer_url=http://$LB_URL" >> $GITHUB_OUTPUT
+          if [ "$LB_ARN" != "None" ] && [ "$LB_ARN" != "" ] && [ "$LB_ARN" != "null" ]; then
+            echo "✅ Found load balancer: $LB_ARN"
+            
+            # Get load balancer DNS name
+            LB_DNS=$(aws elbv2 describe-load-balancers \
+              --load-balancer-arns $LB_ARN \
+              --region ${{ steps.config.outputs.region }} \
+              --query 'LoadBalancers[0].DNSName' --output text)
+            
+            if [ "$LB_DNS" != "None" ] && [ "$LB_DNS" != "" ] && [ "$LB_DNS" != "null" ]; then
+              echo "✅ Load Balancer DNS: $LB_DNS"
+              echo "load_balancer_url=http://$LB_DNS" >> $GITHUB_OUTPUT
+              echo "load_balancer_dns=$LB_DNS" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️ Could not retrieve load balancer DNS name"
+              echo "load_balancer_url=Not available" >> $GITHUB_OUTPUT
+              echo "load_balancer_dns=Not available" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "⚠️ Could not retrieve load balancer ARN"
+            echo "load_balancer_url=Not available" >> $GITHUB_OUTPUT
+            echo "load_balancer_dns=Not available" >> $GITHUB_OUTPUT
+          fi
         else
-          echo "load_balancer_url=Not configured" >> $GITHUB_OUTPUT
+          # Method 2: Search for load balancer by tags
+          echo "⚠️ No target group found in ECS service, searching by tags..."
+          
+          LB_ARN=$(aws elbv2 describe-load-balancers \
+            --region ${{ steps.config.outputs.region }} \
+            --query "LoadBalancers[?contains(LoadBalancerName, '${{ steps.config.outputs.application_name }}')].LoadBalancerArn | [0]" --output text)
+          
+          if [ "$LB_ARN" != "None" ] && [ "$LB_ARN" != "" ] && [ "$LB_ARN" != "null" ]; then
+            LB_DNS=$(aws elbv2 describe-load-balancers \
+              --load-balancer-arns $LB_ARN \
+              --region ${{ steps.config.outputs.region }} \
+              --query 'LoadBalancers[0].DNSName' --output text)
+            
+            echo "✅ Found load balancer by name: $LB_DNS"
+            echo "load_balancer_url=http://$LB_DNS" >> $GITHUB_OUTPUT
+            echo "load_balancer_dns=$LB_DNS" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Could not find load balancer"
+            echo "load_balancer_url=Not configured" >> $GITHUB_OUTPUT
+            echo "load_balancer_dns=Not configured" >> $GITHUB_OUTPUT
+          fi
         fi
 
     - name: Deployment summary
       run: |
-        echo "🎉 Deployment completed successfully!"
-        echo "📦 Application: ${{ steps.config.outputs.application_name }}"
-        echo "🌍 Environment: ${{ steps.config.outputs.environment }}"
-        echo "📍 Region: ${{ steps.config.outputs.region }}"
-        echo "🏷️ Version: ${{ steps.config.outputs.version }}"
-        echo "👤 Approved by: ${{ steps.config.outputs.approved_by }}"
-        echo "🌐 Load Balancer URL: ${{ steps.lb-url.outputs.load_balancer_url }}"
-        echo "🔗 ECS Cluster: ${{ steps.infra-check.outputs.cluster_name }}"
-        echo "⚙️ ECS Service: ${{ steps.infra-check.outputs.service_name }}"
-        echo "🐳 Docker Image: ${{ steps.build-image.outputs.image_uri }}"
-        echo "✅ Deployment Status: SUCCESS"
+        echo "=========================================="
+        echo "🎉 DEPLOYMENT COMPLETED SUCCESSFULLY"
+        echo "=========================================="
+        echo ""
+        echo "📦 Application Details:"
+        echo "   Name: ${{ steps.config.outputs.application_name }}"
+        echo "   Environment: ${{ steps.config.outputs.environment }}"
+        echo "   Region: ${{ steps.config.outputs.region }}"
+        echo "   Version: ${{ steps.config.outputs.version }}"
+        echo "   Approved by: ${{ steps.config.outputs.approved_by }}"
+        echo ""
+        echo "🌐 Access Information:"
+        echo "   Load Balancer URL: ${{ steps.lb-url.outputs.load_balancer_url }}"
+        echo "   Load Balancer DNS: ${{ steps.lb-url.outputs.load_balancer_dns }}"
+        echo ""
+        echo "🏗️ Infrastructure:"
+        echo "   ECS Cluster: ${{ steps.infra-check.outputs.cluster_name }}"
+        echo "   ECS Service: ${{ steps.infra-check.outputs.service_name }}"
+        echo "   Docker Image: ${{ steps.build-image.outputs.image_uri }}"
         echo ""
         echo "🔗 Quick Links:"
-        echo "   AWS ECS Console: https://console.aws.amazon.com/ecs/home?region=${{ steps.config.outputs.region }}#/clusters/${{ steps.infra-check.outputs.cluster_name }}/services"
-        echo "   Application URL: ${{ steps.lb-url.outputs.load_balancer_url }}"
+        echo "   Application: ${{ steps.lb-url.outputs.load_balancer_url }}"
+        echo "   ECS Console: https://console.aws.amazon.com/ecs/home?region=${{ steps.config.outputs.region }}#/clusters/${{ steps.infra-check.outputs.cluster_name }}/services"
+        echo "   ECR Console: https://console.aws.amazon.com/ecr/repositories?region=${{ steps.config.outputs.region }}"
+        echo ""
+        echo "✅ Deployment Status: SUCCESS"
+        echo "=========================================="
