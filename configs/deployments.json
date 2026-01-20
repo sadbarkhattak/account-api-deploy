@@ -4,11 +4,11 @@
     "environment": "dev",
     "region": "us-east-1",
     "version": "latest",
-    "timestamp": "2026-01-20T13:58:00.000Z",
+    "timestamp": "2026-01-20T14:05:00.000Z",
     "approved_by": "sadbar",
-    "approved_at": "2026-01-20T13:58:00.000Z",
-    "trigger_type": "add_sample_page",
+    "approved_at": "2026-01-20T14:05:00.000Z",
+    "trigger_type": "fix_routing_issue",
     "status": "approved",
-    "deployment_id": "2026-01-20T13:58:00.000Z"
+    "deployment_id": "2026-01-20T14:05:00.000Z"
   }
 ]
