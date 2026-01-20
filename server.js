@@ -16,7 +16,19 @@ app.use(express.json());
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API Routes
+// Health check endpoint (must be before catch-all)
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'account-api',
+    environment: ENVIRONMENT,
+    version: VERSION,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// API Routes (must be before catch-all)
 app.get('/api', (req, res) => {
   res.json({
     service: 'Account API',
@@ -30,17 +42,6 @@ app.get('/api', (req, res) => {
   });
 });
 
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'account-api',
-    environment: ENVIRONMENT,
-    version: VERSION,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
-});
-
 app.get('/api/accounts', (req, res) => {
   res.json({
     accounts: [
@@ -51,11 +52,6 @@ app.get('/api/accounts', (req, res) => {
     environment: ENVIRONMENT,
     total: 3
   });
-});
-
-// Catch-all route to serve index.html for any unmatched routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
